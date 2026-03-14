@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<title>Sambung Kata</title>
+
+<style>
+
+:root{
+--cyan:#00eaff;
+--bg:#020a12;
+}
+
+body{
+margin:0;
+font-family:monospace;
+background:var(--bg);
+color:var(--cyan);
+display:flex;
+justify-content:center;
+}
+
+.app{
+width:100%;
+max-width:950px;
+padding:30px 20px;
+}
+
+.title{
+text-align:center;
+font-size:38px;
+letter-spacing:2px;
+margin-bottom:10px;
+text-shadow:0 0 10px var(--cyan);
+}
+
+.db{
+text-align:center;
+margin-bottom:20px;
+opacity:.8;
+}
+
+.grid{
+display:grid;
+grid-template-columns:1fr 1fr;
+gap:10px;
+margin-bottom:10px;
+}
+
+.grid.small{
+grid-template-columns:1fr 1fr 1fr;
+}
+
+input{
+background:#00141f;
+border:1px solid var(--cyan);
+color:var(--cyan);
+padding:12px;
+font-size:14px;
+outline:none;
+transition:.25s;
+}
+
+input:focus{
+box-shadow:0 0 10px var(--cyan);
+transform:scale(1.02);
+}
+
+.output{
+margin-top:25px;
+border-top:1px solid var(--cyan);
+padding-top:15px;
+}
+
+.header{
+display:flex;
+justify-content:space-between;
+margin-bottom:10px;
+}
+
+.count{
+background:var(--cyan);
+color:black;
+padding:3px 10px;
+}
+
+.result{
+display:flex;
+flex-wrap:wrap;
+gap:7px;
+min-height:80px;
+align-items:flex-start;
+animation:fade .4s;
+}
+
+.word{
+border:1px solid var(--cyan);
+padding:5px 9px;
+font-size:13px;
+transition:.2s;
+height:fit-content;
+}
+
+.word:hover{
+background:var(--cyan);
+color:black;
+transform:scale(1.05);
+}
+
+.empty{
+text-align:center;
+width:100%;
+font-size:22px;
+opacity:.7;
+margin-top:20px;
+}
+
+.skeleton{
+height:14px;
+background:#00323f;
+border-radius:3px;
+animation:pulse 1.4s infinite;
+}
+
+.skeleton-wrap{
+display:grid;
+grid-template-columns:repeat(6,1fr);
+gap:8px;
+}
+
+.watermark{
+text-align:center;
+font-size:12px;
+letter-spacing:2px;
+opacity:.6;
+margin-bottom:10px;
+}
+
+.esc-hint{
+text-align:right;
+color:#ffd400;
+font-size:12px;
+margin-top:5px;
+margin-bottom:10px;
+}
+
+@keyframes pulse{
+0%{opacity:.4}
+50%{opacity:1}
+100%{opacity:.4}
+}
+
+@keyframes fade{
+from{opacity:0;transform:translateY(6px)}
+to{opacity:1}
+}
+
+@media(max-width:700px){
+
+.grid{
+grid-template-columns:1fr;
+}
+
+.grid.small{
+grid-template-columns:1fr;
+}
+
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="app">
+
+<div class="title">SAMBUNG KATA</div>
+
+<div class="db">
+Total Kata: <span id="dbCount">LOADING...</span>
+</div>
+
+<div class="watermark">LIVE FEED ACTIVE - BY WARREN DEV</div>
+
+<div class="grid">
+<input id="prefix" placeholder="huruf awal">
+<input id="suffix" placeholder="akhiran">
+</div>
+
+<div class="grid small">
+<input id="minLen" type="number" placeholder="min length">
+<input id="maxLen" type="number" placeholder="max length">
+<input id="az" placeholder="A-Z">
+</div>
+
+<div class="esc-hint">PRESS [ESC] TO CLEAR INPUT</div>
+
+<div class="output">
+
+<div class="header">
+<div>&gt;&gt; DATA_OUTPUT</div>
+<div class="count" id="count">0</div>
+</div>
+
+<div id="result" class="result">
+
+<div class="skeleton-wrap" id="skeleton">
+<div class="skeleton"></div>
+<div class="skeleton"></div>
+<div class="skeleton"></div>
+<div class="skeleton"></div>
+<div class="skeleton"></div>
+<div class="skeleton"></div>
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+<script>
+
+let allWords=[]
+
+const prefix=document.getElementById("prefix")
+const suffix=document.getElementById("suffix")
+const minLen=document.getElementById("minLen")
+const maxLen=document.getElementById("maxLen")
+const result=document.getElementById("result")
+const count=document.getElementById("count")
+const az=document.getElementById("az")
+
+fetch("/data/kamus.json")
+.then(r=>r.json())
+.then(data=>{
+
+allWords=[...new Set(data)]
+.map(w=>normalize(w))
+.filter(Boolean)
+
+document.getElementById("dbCount").innerText=
+allWords.length.toLocaleString("id-ID")
+
+renderIdle()
+
+})
+
+function normalize(word){
+
+return word
+.toString()
+.trim()
+.toLowerCase()
+.replace(/^["']|["']$/g,"")
+.replace(/[^a-zA-ZÀ-ÿ0-9_-]/g,"")
+
+}
+
+az.oninput = () => {
+let val = az.value.replace(/[^a-zA-Z]/g,"").toLowerCase()
+az.value = val
+prefix.value = val
+filter()
+}
+
+prefix.oninput=filter
+suffix.oninput=filter
+minLen.oninput=filter
+maxLen.oninput=filter
+
+function filter(){
+
+let data=allWords
+
+let p=prefix.value.trim().toLowerCase()
+let s=suffix.value.trim().toLowerCase()
+
+let min=minLen.value==""?null:Number(minLen.value)
+let max=maxLen.value==""?null:Number(maxLen.value)
+
+if(!p && !s && !min && !max){
+renderIdle()
+return
+}
+
+if(p) data=data.filter(w=>w.startsWith(p))
+if(s) data=data.filter(w=>w.endsWith(s))
+
+if(min!==null) data=data.filter(w=>w.length>=min)
+if(max!==null) data=data.filter(w=>w.length<=max)
+
+render(data)
+
+}
+
+function render(words){
+
+result.innerHTML=""
+
+count.innerText=words.length
+
+words.forEach(w=>{
+
+const div=document.createElement("div")
+div.className="word"
+div.textContent=w
+
+result.appendChild(div)
+
+})
+
+}
+
+function renderIdle(){
+
+result.innerHTML=`<div class="empty">&gt; [ _ ] &lt;</div>`
+count.innerText="0"
+
+}
+
+window.addEventListener("keydown",e=>{
+if(e.key==="Escape"){
+prefix.value=""
+suffix.value=""
+minLen.value=""
+maxLen.value=""
+renderIdle()
+}
+})
+
+</script>
+
+</body>
+</html>
